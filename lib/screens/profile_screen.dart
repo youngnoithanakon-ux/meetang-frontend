@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -130,6 +130,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: _isSaving
                         ? const CircularProgressIndicator(color: Colors.white)
                         : const Text('บันทึกการเปลี่ยนแปลง', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.pushNamed(context, '/categories'),
+                    icon: const Icon(Icons.category),
+                    label: const Text('จัดการหมวดหมู่รายรับ/รายจ่าย'),
                   ),
                   const SizedBox(height: 16),
                   OutlinedButton.icon(

@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // IP ของเครื่องคอมพิวเตอร์ เพื่อให้มือถือเชื่อมต่อเข้ามาได้
-  static const String serverIp = '49.1.1.47:8000';
-  static const String baseUrl = 'http://$serverIp/api';
+  static const String serverIp = 'meetang.heyroll.site';
+  static const String baseUrl = 'https://$serverIp/api';
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -320,6 +320,30 @@ class ApiService {
       return jsonDecode(response.body);
     } else {
       throw Exception('Failed to update category: ${response.body}');
+    }
+  }
+
+  Future<Map<String, dynamic>> createCategory(String name, String type) async {
+    final token = await getToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/categories'),
+      headers: _headers(token),
+      body: jsonEncode({'name': name, 'type': type}),
+    );
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to create category: ${response.body}');
+  }
+
+  Future<void> deleteCategory(int id) async {
+    final token = await getToken();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/categories/$id'),
+      headers: _headers(token),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete category: ${response.body}');
     }
   }
 
