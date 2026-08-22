@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
 import '../services/api_service.dart';
 
 class LockScreen extends StatefulWidget {
@@ -13,8 +14,10 @@ class LockScreen extends StatefulWidget {
 
 class _LockScreenState extends State<LockScreen> {
   String _pin = '';
-  final String _correctPin = '123456'; // สำหรับทดสอบ
+  String? _savedPin;
   bool _isChecking = true;
+  bool _biometricsEnabled = false;
+  final LocalAuthentication auth = LocalAuthentication();
 
   @override
   void initState() {
@@ -31,17 +34,45 @@ class _LockScreenState extends State<LockScreen> {
       return;
     }
 
+    _savedPin = prefs.getString('user_pin');
+    _biometricsEnabled = prefs.getBool('biometrics_enabled') ?? false;
+
+    // ถ้าไม่มี PIN ให้ข้ามไปหน้า Dashboard เลย หรือบังคับตั้ง PIN ก็ได้
+    // ในที่นี้เราจะข้ามไปเลยถ้ายังไม่ได้ตั้ง PIN
+    if (_savedPin == null) {
+      LockScreen.isUnlocked = true;
+      if (mounted) Navigator.of(context).pushReplacementNamed('/dashboard');
+      return;
+    }
+
     setState(() {
       _isChecking = false;
     });
+
+    if (_biometricsEnabled) {
+      _authenticate();
+    }
   }
 
-  void _authenticate() {
-    // ฟังก์ชันนี้จะถูกเรียกเมื่อกดปุ่มสแกนนิ้ว
-    // (ตอนนี้เราใช้ PIN เป็นหลักเพื่อป้องกัน Error บน Web)
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('กรุณากดรหัส PIN: 123456')),
-    );
+  Future<void> _authenticate() async {
+    try {
+      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+      final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+
+      if (canAuthenticate) {
+        final bool didAuthenticate = await auth.authenticate(
+          localizedReason: 'สแกนลายนิ้วมือหรือใบหน้าเพื่อปลดล็อค',
+          options: const AuthenticationOptions(stickyAuth: true),
+        );
+        if (didAuthenticate && mounted) {
+          LockScreen.isUnlocked = true;
+          Navigator.of(context).pushReplacementNamed('/dashboard');
+        }
+      }
+    } catch (e) {
+      // Fallback to PIN
+      debugPrint('Biometrics error: $e');
+    }
   }
 
   void _onPinPress(String digit) {
@@ -50,12 +81,12 @@ class _LockScreenState extends State<LockScreen> {
         _pin += digit;
       });
       if (_pin.length == 6) {
-        if (_pin == _correctPin) {
+        if (_pin == _savedPin) {
           LockScreen.isUnlocked = true;
           Navigator.of(context).pushReplacementNamed('/dashboard');
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PIN ไม่ถูกต้อง (ลอง 123456)'), backgroundColor: Colors.red),
+            const SnackBar(content: Text('PIN ไม่ถูกต้อง'), backgroundColor: Colors.red),
           );
           setState(() {
             _pin = '';
@@ -134,7 +165,7 @@ class _LockScreenState extends State<LockScreen> {
         crossAxisSpacing: 24,
         children: [
           for (var i = 1; i <= 9; i++) _buildPinButton(i.toString()),
-          _buildActionButton(Icons.fingerprint, _authenticate),
+          _biometricsEnabled ? _buildActionButton(Icons.fingerprint, _authenticate) : const SizedBox(),
           _buildPinButton('0'),
           _buildActionButton(Icons.backspace_outlined, _onDeletePress),
         ],
