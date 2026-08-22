@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/login_screen.dart';
+import 'screens/register_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/main_screen.dart';
 import 'screens/lock_screen.dart';
 
@@ -69,6 +71,8 @@ class MyApp extends StatelessWidget {
       routes: {
         '/lock': (context) => const LockScreen(),
         '/': (context) => const LoginScreen(),
+        '/register': (context) => const RegisterScreen(),
+        '/profile': (context) => const ProfileScreen(),
         '/dashboard': (context) => const MainScreen(),
       },
     );

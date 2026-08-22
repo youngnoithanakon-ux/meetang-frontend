@@ -77,6 +77,38 @@ class ApiService {
     }
   }
 
+  Future<void> logout() async {
+    final token = await getToken();
+    if (token != null) {
+      await http.post(Uri.parse('$baseUrl/logout'), headers: _headers(token));
+      await removeToken();
+    }
+  }
+
+  Future<Map<String, dynamic>> getUserProfile() async {
+    final token = await getToken();
+    final response = await http.get(Uri.parse('$baseUrl/user'), headers: _headers(token));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to load profile');
+  }
+
+  Future<void> updateUserProfile(String name, String? password) async {
+    final token = await getToken();
+    final response = await http.put(
+      Uri.parse('$baseUrl/user'),
+      headers: _headers(token),
+      body: jsonEncode({
+        'name': name,
+        if (password != null && password.isNotEmpty) 'password': password,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update profile');
+    }
+  }
+
   Future<List<dynamic>> getWallets() async {
     final token = await getToken();
     final response = await http.get(

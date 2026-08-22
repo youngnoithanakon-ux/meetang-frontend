@@ -418,9 +418,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: 'เพิ่มกระเป๋า',
           ),
           IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: _logout,
-            tooltip: 'ออกจากระบบ',
+            icon: const Icon(Icons.person),
+            onPressed: () {
+              Navigator.pushNamed(context, '/profile');
+            },
+            tooltip: 'จัดการบัญชี',
           ),
         ],
       ),
