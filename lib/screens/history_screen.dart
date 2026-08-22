@@ -175,7 +175,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         context: context,
                                         builder: (context) => AlertDialog(
                                           contentPadding: EdgeInsets.zero,
-                                          content: Image.network('https://${ApiService.serverIp}/storage/${tx['image_path']}'),
+                                          content: Image.network('https://${ApiService.serverIp}/api/images/${tx['image_path']}'),
                                           actions: [
                                             TextButton(
                                               onPressed: () => Navigator.pop(context),
