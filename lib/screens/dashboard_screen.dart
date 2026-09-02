@@ -313,7 +313,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     'wallet_id': fromWallet['id'],
                     'destination_wallet_id': toWallet['id'],
                     'amount': amount,
-                    'date': DateTime.now().toIso8601String().split('T')[0],
+                    'date': DateTime.now().toIso8601String(),
                     'note': 'โอนเงิน',
                   });
                   if (mounted) {
