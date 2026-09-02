@@ -1,9 +1,9 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // IP ของเครื่องคอมพิวเตอร์ เพื่อให้มือถือเชื่อมต่อเข้ามาได้
+  // IP เธเธญเธเน€เธเธฃเธทเนเธญเธเธเธญเธกเธเธดเธงเน€เธ•เธญเธฃเน เน€เธเธทเนเธญเนเธซเนเธกเธทเธญเธ–เธทเธญเน€เธเธทเนเธญเธกเธ•เนเธญเน€เธเนเธฒเธกเธฒเนเธ”เน
   static const String serverIp = 'meetang.heyroll.site';
   static const String baseUrl = 'https://$serverIp/api';
 
@@ -392,3 +392,4 @@ class ApiService {
     }
   }
 }
+

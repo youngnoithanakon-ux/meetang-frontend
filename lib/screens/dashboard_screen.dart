@@ -34,16 +34,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final now = DateTime.now();
       
-      // Run API calls concurrently to speed up loading
-      final results = await Future.wait([
-        _apiService.getWallets(),
-        _apiService.getTransactions(month: now.month, year: now.year),
-        _apiService.getWalletOrder(),
-      ]);
+      final dashboardData = await _apiService.getDashboardInfo(month: now.month, year: now.year);
+      final savedOrder = await _apiService.getWalletOrder();
 
-      final wallets = results[0] as List<dynamic>;
-      final transactions = results[1] as List<dynamic>;
-      final savedOrder = results[2] as List<int>;
+      final wallets = dashboardData['wallets'] as List<dynamic>;
+      final transactions = dashboardData['transactions'] as List<dynamic>;
       
       if (savedOrder.isNotEmpty) {
         wallets.sort((a, b) {
