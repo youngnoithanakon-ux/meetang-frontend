@@ -2,6 +2,7 @@
 import '../services/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
+import '../main.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -93,6 +94,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _biometricsEnabled = value;
     });
   }
+  
+  Future<void> _toggleDarkMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_dark_mode', value);
+    MyApp.themeNotifier.value = value ? ThemeMode.dark : ThemeMode.light;
+  }
 
   void _showPinDialog() {
     _pinController.clear();
@@ -157,6 +164,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Scaffold(
       appBar: AppBar(title: const Text('จัดการบัญชี')),
       body: _isLoading
@@ -206,6 +215,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 8),
+                  const Text('การตั้งค่าแอป', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.dark_mode_outlined),
+                    title: const Text('โหมดกลางคืน (Dark Mode)'),
+                    value: isDark,
+                    onChanged: _toggleDarkMode,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    tileColor: Theme.of(context).cardTheme.color,
+                  ),
+                  const SizedBox(height: 24),
                   const Text('ความปลอดภัยและอื่นๆ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 16),
                   ListTile(
@@ -215,7 +235,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: _showPinDialog,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    tileColor: Colors.white,
+                    tileColor: Theme.of(context).cardTheme.color,
                   ),
                   const SizedBox(height: 8),
                   SwitchListTile(
@@ -225,7 +245,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     value: _biometricsEnabled,
                     onChanged: _toggleBiometrics,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    tileColor: Colors.white,
+                    tileColor: Theme.of(context).cardTheme.color,
                   ),
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
