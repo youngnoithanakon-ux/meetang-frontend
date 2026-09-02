@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
@@ -367,52 +367,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         height: 140,
                         child: _wallets.isEmpty
                             ? Center(child: Text('ยังไม่มีกระเป๋าเงิน', style: TextStyle(color: Colors.grey[500])))
-                            : ListView.builder(
+                            : ReorderableListView.builder(
                                 scrollDirection: Axis.horizontal,
+                                buildDefaultDragHandles: false,
+                                onReorder: (oldIndex, newIndex) {
+                                  setState(() {
+                                    if (newIndex > oldIndex) newIndex -= 1;
+                                    final item = _wallets.removeAt(oldIndex);
+                                    _wallets.insert(newIndex, item);
+                                    final newOrderIds = _wallets.map<int>((w) => w['id'] as int).toList();
+                                    _apiService.saveWalletOrder(newOrderIds);
+                                  });
+                                },
                                 itemCount: _wallets.length,
                                 itemBuilder: (context, index) {
                                   final wallet = _wallets[index];
                                   final bool isGoal = wallet['target_amount'] != null;
                                   final double progress = isGoal ? ((wallet['balance'] ?? 0) / wallet['target_amount']).clamp(0.0, 1.0) : 0.0;
 
-                                  return GestureDetector(
-                                    onTap: () => _showEditWalletDialog(wallet),
-                                    child: Container(
-                                      width: 160,
-                                      margin: const EdgeInsets.only(right: 16, bottom: 8),
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).cardTheme.color,
-                                        borderRadius: BorderRadius.circular(16),
-                                        boxShadow: [
-                                          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2)),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(isGoal ? Icons.flag : Icons.account_balance_wallet, color: Theme.of(context).colorScheme.primary, size: 20),
-                                              const SizedBox(width: 8),
-                                              Expanded(child: Text(wallet['name'], style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                            ],
-                                          ),
-                                          const Spacer(),
-                                          Text(
-                                            formatCurrency.format(wallet['balance'] ?? 0),
-                                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
-                                          ),
-                                          if (isGoal) ...[
-                                            const SizedBox(height: 8),
-                                            LinearProgressIndicator(
-                                              value: progress,
-                                              backgroundColor: Colors.grey[300],
-                                              color: Theme.of(context).colorScheme.primary,
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
+                                  return ReorderableDragStartListener(
+                                    key: ValueKey(wallet['id']),
+                                    index: index,
+                                    child: GestureDetector(
+                                      onTap: () => _showEditWalletDialog(wallet),
+                                      child: Container(
+                                        width: 160,
+                                        margin: const EdgeInsets.only(right: 16, bottom: 8),
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).cardTheme.color,
+                                          borderRadius: BorderRadius.circular(16),
+                                          boxShadow: [
+                                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2)),
                                           ],
-                                        ],
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(isGoal ? Icons.flag : Icons.account_balance_wallet, color: Theme.of(context).colorScheme.primary, size: 20),
+                                                const SizedBox(width: 8),
+                                                Expanded(child: Text(wallet['name'], style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                              ],
+                                            ),
+                                            const Spacer(),
+                                            Text(
+                                              formatCurrency.format(wallet['balance'] ?? 0),
+                                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+                                            ),
+                                            if (isGoal) ...[
+                                              const SizedBox(height: 8),
+                                              LinearProgressIndicator(
+                                                value: progress,
+                                                backgroundColor: Colors.grey[300],
+                                                color: Theme.of(context).colorScheme.primary,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   );
