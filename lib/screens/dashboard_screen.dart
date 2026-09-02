@@ -189,10 +189,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (nameController.text.trim().isEmpty) return;
                     
                     try {
-                      await _apiService.addWallet(
+                      await _apiService.createWallet(
                         nameController.text.trim(),
                         double.tryParse(balanceController.text) ?? 0,
-                        isGoal ? (double.tryParse(targetController.text) ?? 0) : null,
+                        targetAmount: isGoal ? (double.tryParse(targetController.text) ?? 0) : null,
                       );
                       if (mounted) {
                         Navigator.pop(context);
