@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import 'add_transaction_screen.dart';
 
@@ -12,62 +14,116 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _apiService = ApiService();
   List<dynamic> _wallets = [];
+  List<dynamic> _transactions = [];
   bool _isLoading = true;
+
+  double _totalBalance = 0;
+  double _monthlyIncome = 0;
+  double _monthlyExpense = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadWallets();
+    _loadData();
   }
 
-  Future<void> _loadWallets() async {
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     try {
-      // Process recurring transactions first silently
       _apiService.processRecurrings().catchError((_) {});
 
+      final now = DateTime.now();
       final wallets = await _apiService.getWallets();
       final savedOrder = await _apiService.getWalletOrder();
+      final transactions = await _apiService.getTransactions(month: now.month, year: now.year);
       
-      // Sort wallets based on savedOrder
       if (savedOrder.isNotEmpty) {
         wallets.sort((a, b) {
           int indexA = savedOrder.indexOf(a['id']);
           int indexB = savedOrder.indexOf(b['id']);
-          // If not found in saved order, put them at the end
           if (indexA == -1) indexA = 9999;
           if (indexB == -1) indexB = 9999;
           return indexA.compareTo(indexB);
         });
       }
 
+      double tBalance = 0;
+      for (var w in wallets) {
+        tBalance += (w['balance'] ?? 0).toDouble();
+      }
+
+      double mIncome = 0;
+      double mExpense = 0;
+      for (var tx in transactions) {
+        final amount = (tx['amount'] ?? 0).toDouble();
+        if (tx['type'] == 'income') {
+          mIncome += amount;
+        } else if (tx['type'] == 'expense') {
+          mExpense += amount;
+        }
+      }
+
       setState(() {
         _wallets = wallets;
+        _transactions = transactions;
+        _totalBalance = tBalance;
+        _monthlyIncome = mIncome;
+        _monthlyExpense = mExpense;
         _isLoading = false;
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('เกิดข้อผิดพลาด: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        setState(() => _isLoading = false);
       }
     }
   }
 
-  void _logout() async {
-    await _apiService.removeToken();
-    if (mounted) {
-      Navigator.of(context).pushReplacementNamed('/');
+  List<BarChartGroupData> _generateChartData() {
+    final now = DateTime.now();
+    List<double> dailyExpenses = List.filled(7, 0.0);
+    
+    for (var tx in _transactions) {
+      if (tx['type'] == 'expense') {
+        final txDate = DateTime.parse(tx['date']);
+        final diff = now.difference(txDate).inDays;
+        if (diff >= 0 && diff < 7) {
+          dailyExpenses[6 - diff] += (tx['amount'] ?? 0).toDouble();
+        }
+      }
     }
+
+    List<BarChartGroupData> barGroups = [];
+    double maxAmount = dailyExpenses.reduce((a, b) => a > b ? a : b);
+    if (maxAmount == 0) maxAmount = 100; // prevent divide by zero
+
+    for (int i = 0; i < 7; i++) {
+      barGroups.add(
+        BarChartGroupData(
+          x: i,
+          barRods: [
+            BarChartRodData(
+              toY: dailyExpenses[i],
+              color: Theme.of(context).colorScheme.error,
+              width: 16,
+              borderRadius: BorderRadius.circular(4),
+              backDrawRodData: BackgroundBarChartRodData(
+                show: true,
+                toY: maxAmount * 1.2,
+                color: Theme.of(context).colorScheme.error.withOpacity(0.1),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return barGroups;
   }
 
   void _showAddWalletDialog() {
     final nameController = TextEditingController();
     final balanceController = TextEditingController(text: '0');
     final targetController = TextEditingController();
-    bool isSaving = false;
     bool isGoal = false;
 
     showDialog(
@@ -119,236 +175,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           prefixIcon: Icon(Icons.flag),
                         ),
                       ),
-                    ]
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('ยกเลิก'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          if (nameController.text.trim().isEmpty) return;
-                          
-                          setDialogState(() => isSaving = true);
-                          try {
-                            await _apiService.createWallet(
-                              nameController.text.trim(),
-                              double.tryParse(balanceController.text) ?? 0.0,
-                              targetAmount: isGoal ? double.tryParse(targetController.text) : null,
-                            );
-                            if (mounted) {
-                              Navigator.pop(context);
-                              _loadWallets();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('เพิ่มสำเร็จ!')),
-                              );
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
-                              );
-                            }
-                          } finally {
-                            if (mounted) {
-                              setDialogState(() => isSaving = false);
-                            }
-                          }
-                        },
-                  child: isSaving
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('บันทึก'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showEditWalletDialog(Map<String, dynamic> wallet) {
-    final nameController = TextEditingController(text: wallet['name']);
-    final balanceController = TextEditingController(text: wallet['balance'].toString());
-    final targetController = TextEditingController(
-      text: wallet['target_amount'] != null ? wallet['target_amount'].toString() : '',
-    );
-    bool isSaving = false;
-    bool isGoal = wallet['target_amount'] != null && double.parse(wallet['target_amount'].toString()) > 0;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('แก้ไขกระเป๋าเงิน/เป้าหมาย'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        const Text('ตั้งเป็นเป้าหมายการออม?'),
-                        const Spacer(),
-                        Switch(
-                          value: isGoal,
-                          onChanged: (val) => setDialogState(() => isGoal = val),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: nameController,
-                      decoration: InputDecoration(
-                        labelText: isGoal ? 'ชื่อเป้าหมาย' : 'ชื่อกระเป๋าเงิน',
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: balanceController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'ยอดเงินเริ่มต้น',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    if (isGoal) ...[
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: targetController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'เป้าหมายที่ต้องการ (บาท)',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.flag),
-                        ),
-                      ),
-                    ]
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('ยกเลิก'),
-                ),
-                ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          if (nameController.text.trim().isEmpty) return;
-                          
-                          setDialogState(() => isSaving = true);
-                          try {
-                            await _apiService.updateWallet(
-                              wallet['id'],
-                              nameController.text.trim(),
-                              double.tryParse(balanceController.text) ?? 0.0,
-                              targetAmount: isGoal ? double.tryParse(targetController.text) : null,
-                            );
-                            if (mounted) {
-                              Navigator.pop(context);
-                              _loadWallets();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('แก้ไขสำเร็จ!')),
-                              );
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
-                              );
-                            }
-                          } finally {
-                            if (mounted) {
-                              setDialogState(() => isSaving = false);
-                            }
-                          }
-                        },
-                  child: isSaving
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('บันทึก'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _deleteWallet(int id) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('ยืนยันการลบ'),
-        content: const Text('คุณต้องการลบกระเป๋า/เป้าหมายนี้ใช่หรือไม่?\n(รายการประวัติที่ผูกกับกระเป๋านี้อาจได้รับผลกระทบ)'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ยกเลิก')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('ลบกระเป๋า', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await _apiService.deleteWallet(id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ลบสำเร็จ')));
-          _loadWallets();
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ลบไม่สำเร็จ: $e')));
-        }
-      }
-    }
-  }
-
-  void _showQuickTransferDialog(Map<String, dynamic> sourceWallet, Map<String, dynamic> destWallet) {
-    final amountController = TextEditingController();
-    bool isSaving = false;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('โอนเงินด่วน 💸'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(sourceWallet['name'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                      const Icon(Icons.arrow_forward),
-                      Text(destWallet['name'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                     ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'จำนวนเงินที่ต้องการโอน',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.attach_money),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -356,50 +185,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: const Text('ยกเลิก'),
                 ),
                 ElevatedButton(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          if (amountController.text.trim().isEmpty) return;
-                          final amount = double.tryParse(amountController.text);
-                          if (amount == null || amount <= 0) return;
-
-                          setDialogState(() => isSaving = true);
-                          try {
-                            final data = {
-                              'type': 'transfer',
-                              'amount': amount.toString(),
-                              'wallet_id': sourceWallet['id'].toString(),
-                              'destination_wallet_id': destWallet['id'].toString(),
-                              'date': DateTime.now().toIso8601String(),
-                              'note': 'โอนเงินด่วน (ลากวาง)',
-                            };
-                            await _apiService.createTransaction(data);
-                            if (mounted) {
-                              Navigator.pop(context);
-                              _loadWallets();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('โอนเงินสำเร็จแล้ว! 🎉')),
-                              );
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
-                              );
-                            }
-                          } finally {
-                            if (mounted) {
-                              setDialogState(() => isSaving = false);
-                            }
-                          }
-                        },
-                  child: isSaving
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('ยืนยันโอน'),
+                  onPressed: () async {
+                    if (nameController.text.trim().isEmpty) return;
+                    
+                    try {
+                      await _apiService.addWallet(
+                        nameController.text.trim(),
+                        double.tryParse(balanceController.text) ?? 0,
+                        isGoal ? (double.tryParse(targetController.text) ?? 0) : null,
+                      );
+                      if (mounted) {
+                        Navigator.pop(context);
+                        _loadData();
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    }
+                  },
+                  child: const Text('บันทึก'),
                 ),
               ],
             );
           },
+        );
+      },
+    );
+  }
+
+  void _showEditWalletDialog(dynamic wallet) {
+    final nameController = TextEditingController(text: wallet['name']);
+    final balanceController = TextEditingController(text: wallet['balance']?.toString() ?? '0');
+    final formatCurrency = NumberFormat.currency(locale: 'th_TH', symbol: '฿');
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('แก้ไขกระเป๋าเงิน'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'ชื่อกระเป๋าเงิน', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: balanceController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'ยอดเงินปัจจุบัน',
+                  border: OutlineInputBorder(),
+                  helperText: 'หากแก้ไขยอดเงิน ระบบจะบันทึกประวัติปรับปรุงยอดเงินให้อัตโนมัติ',
+                  helperMaxLines: 2,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ยกเลิก'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) return;
+                try {
+                  await _apiService.updateWallet(
+                    wallet['id'],
+                    nameController.text.trim(),
+                    double.tryParse(balanceController.text) ?? 0,
+                  );
+                  if (mounted) {
+                    Navigator.pop(context);
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('อัพเดทกระเป๋าเงินสำเร็จ')));
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                }
+              },
+              child: const Text('บันทึก'),
+            ),
+          ],
         );
       },
     );
@@ -407,21 +275,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final formatCurrency = NumberFormat.currency(locale: 'th_TH', symbol: '฿');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
-        title: const Text('กระเป๋าเงินของฉัน'),
+        title: const Text('ภาพรวม'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_card),
-            onPressed: _showAddWalletDialog,
-            tooltip: 'เพิ่มกระเป๋า',
-          ),
-          IconButton(
             icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.pushNamed(context, '/profile');
-            },
+            onPressed: () => Navigator.pushNamed(context, '/profile'),
             tooltip: 'จัดการบัญชี',
           ),
         ],
@@ -429,222 +292,198 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadWallets,
-              child: _wallets.isEmpty
-                  ? Center(
-                      child: Text(
-                        'ยังไม่มีกระเป๋าเงิน\nกดปุ่ม + เพื่อเพิ่มกระเป๋า',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                      ),
-                    )
-                  : ReorderableListView.builder(
-                      buildDefaultDragHandles: false,
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _wallets.length,
-                      onReorder: (oldIndex, newIndex) {
-                        setState(() {
-                          if (newIndex > oldIndex) {
-                            newIndex -= 1;
-                          }
-                          final item = _wallets.removeAt(oldIndex);
-                          _wallets.insert(newIndex, item);
-                          
-                          // Save new order
-                          final newOrderIds = _wallets.map<int>((w) => w['id'] as int).toList();
-                          _apiService.saveWalletOrder(newOrderIds);
-                        });
-                      },
-                      itemBuilder: (context, index) {
-                        final wallet = _wallets[index];
-                        final double balance = double.parse(wallet['balance'].toString());
-                        final double? targetAmount = wallet['target_amount'] != null ? double.parse(wallet['target_amount'].toString()) : null;
-                        final bool isGoal = targetAmount != null && targetAmount > 0;
-                        final double progress = isGoal ? (balance / targetAmount).clamp(0.0, 1.0) : 0.0;
-
-                        final walletCard = Card(
-                          margin: EdgeInsets.zero,
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+              onRefresh: _loadData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 1. Total Balance Card
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Theme.of(context).colorScheme.primary, const Color(0xFF818CF8)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Row(
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(color: Theme.of(context).colorScheme.primary.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            const Text('ยอดเงินคงเหลือรวม', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                            const SizedBox(height: 8),
+                            Text(
+                              formatCurrency.format(_totalBalance),
+                              style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 24),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                ReorderableDragStartListener(
-                                  index: index,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: isGoal 
-                                        ? Colors.orange.withOpacity(0.1)
-                                        : Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      isGoal ? Icons.flag_rounded : Icons.drag_indicator,
-                                      color: isGoal ? Colors.orange : Colors.grey[400],
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        wallet['name'],
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      if (isGoal) ...[
-                                        Text(
-                                          'เป้าหมาย: ฿${targetAmount.toStringAsFixed(0)}',
-                                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: progress,
-                                            backgroundColor: Colors.orange.withOpacity(0.2),
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              progress >= 1.0 ? Colors.green : Colors.orange,
-                                            ),
-                                            minHeight: 6,
-                                          ),
-                                        ),
-                                      ] else ...[
-                                        Text(
-                                          'ยอดคงเหลือ (กดค้างเพื่อโอน)',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
                                 Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('รายรับเดือนนี้', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                    const SizedBox(height: 4),
+                                    Text(formatCurrency.format(_monthlyIncome), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                Container(width: 1, height: 30, color: Colors.white30),
+                                Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text(
-                                      '฿${balance.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: isGoal && progress >= 1.0 
-                                            ? Colors.green 
-                                            : Theme.of(context).colorScheme.primary,
-                                      ),
-                                    ),
-                                    if (isGoal) ...[
-                                      Text(
-                                        '${(progress * 100).toStringAsFixed(0)}%',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: progress >= 1.0 ? Colors.green : Colors.orange,
-                                        ),
-                                      ),
-                                    ]
+                                    const Text('รายจ่ายเดือนนี้', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                    const SizedBox(height: 4),
+                                    Text(formatCurrency.format(_monthlyExpense), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                                   ],
-                                ),
-                                PopupMenuButton<String>(
-                                  onSelected: (value) {
-                                    if (value == 'edit') {
-                                      _showEditWalletDialog(wallet);
-                                    } else if (value == 'delete') {
-                                      _deleteWallet(wallet['id']);
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    const PopupMenuItem(
-                                      value: 'edit',
-                                      child: Text('แก้ไข'),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'delete',
-                                      child: Text('ลบ', style: TextStyle(color: Colors.red)),
-                                    ),
-                                  ],
-                                  icon: const Icon(Icons.more_vert, color: Colors.grey),
                                 ),
                               ],
                             ),
-                          ),
-                        );
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
 
-                        return Container(
-                          key: ValueKey(wallet['id']),
-                          margin: const EdgeInsets.only(bottom: 16),
-                          child: DragTarget<Map<String, dynamic>>(
-                            onWillAcceptWithDetails: (details) {
-                              return details.data['id'] != wallet['id'];
-                            },
-                            onAcceptWithDetails: (details) {
-                              _showQuickTransferDialog(details.data, wallet);
-                            },
-                            builder: (context, candidateData, rejectedData) {
-                              final isHovering = candidateData.isNotEmpty;
-                              return LongPressDraggable<Map<String, dynamic>>(
-                                data: wallet,
-                                delay: const Duration(milliseconds: 300),
-                                feedback: Material(
-                                  color: Colors.transparent,
-                                  child: Opacity(
-                                    opacity: 0.8,
-                                    child: SizedBox(
-                                      width: MediaQuery.of(context).size.width - 32,
-                                      child: walletCard,
-                                    ),
-                                  ),
-                                ),
-                                childWhenDragging: Opacity(
-                                  opacity: 0.3,
-                                  child: walletCard,
-                                ),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: isHovering ? Colors.blue : Colors.transparent,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: walletCard,
-                                ),
-                              );
-                            },
+                      // 2. Wallets Horizontal List
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('กระเป๋าเงินของฉัน', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          TextButton.icon(
+                            onPressed: _showAddWalletDialog,
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('เพิ่ม'),
                           ),
-                        );
-                      },
-                    ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 140,
+                        child: _wallets.isEmpty
+                            ? Center(child: Text('ยังไม่มีกระเป๋าเงิน', style: TextStyle(color: Colors.grey[500])))
+                            : ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _wallets.length,
+                                itemBuilder: (context, index) {
+                                  final wallet = _wallets[index];
+                                  final bool isGoal = wallet['target_amount'] != null;
+                                  final double progress = isGoal ? ((wallet['balance'] ?? 0) / wallet['target_amount']).clamp(0.0, 1.0) : 0.0;
+
+                                  return GestureDetector(
+                                    onTap: () => _showEditWalletDialog(wallet),
+                                    child: Container(
+                                      width: 160,
+                                      margin: const EdgeInsets.only(right: 16, bottom: 8),
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).cardTheme.color,
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2)),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(isGoal ? Icons.flag : Icons.account_balance_wallet, color: Theme.of(context).colorScheme.primary, size: 20),
+                                              const SizedBox(width: 8),
+                                              Expanded(child: Text(wallet['name'], style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                            ],
+                                          ),
+                                          const Spacer(),
+                                          Text(
+                                            formatCurrency.format(wallet['balance'] ?? 0),
+                                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+                                          ),
+                                          if (isGoal) ...[
+                                            const SizedBox(height: 8),
+                                            LinearProgressIndicator(
+                                              value: progress,
+                                              backgroundColor: Colors.grey[300],
+                                              color: Theme.of(context).colorScheme.primary,
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // 3. Mini Chart
+                      const Text('รายจ่าย 7 วันล่าสุด', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 16),
+                      Container(
+                        height: 200,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardTheme.color,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2)),
+                          ],
+                        ),
+                        child: BarChart(
+                          BarChartData(
+                            alignment: BarChartAlignment.spaceAround,
+                            maxY: _generateChartData().isEmpty ? 100 : null,
+                            barTouchData: BarTouchData(
+                              touchTooltipData: BarTouchTooltipData(
+                                getTooltipColor: (_) => Theme.of(context).colorScheme.primary,
+                                getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                  return BarTooltipItem(
+                                    formatCurrency.format(rod.toY),
+                                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  );
+                                },
+                              ),
+                            ),
+                            titlesData: FlTitlesData(
+                              show: true,
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  getTitlesWidget: (value, meta) {
+                                    final date = DateTime.now().subtract(Duration(days: 6 - value.toInt()));
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(DateFormat('EEE').format(date), style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                                    );
+                                  },
+                                ),
+                              ),
+                              leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            ),
+                            gridData: const FlGridData(show: false),
+                            borderData: FlBorderData(show: false),
+                            barGroups: _generateChartData(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 80), // Space for FAB
+                    ],
+                  ),
+                ),
+              ),
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AddTransactionScreen()),
-          );
-          
-          if (result == true) {
-            _loadWallets(); // Refresh dashboard
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('บันทึกรายการสำเร็จ!')),
-              );
-            }
-          }
-        },
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AddTransactionScreen()),
+        ).then((_) => _loadData()),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
