@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
@@ -305,14 +305,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final amount = double.tryParse(amountController.text) ?? 0;
                 if (amount <= 0) return;
                 try {
-                  await _apiService.addTransaction(
-                    type: 'transfer',
-                    walletId: fromWallet['id'],
-                    destinationWalletId: toWallet['id'],
-                    amount: amount,
-                    date: DateTime.now(),
-                    note: 'โอนเงิน',
-                  );
+                  await _apiService.createTransaction({
+                    'type': 'transfer',
+                    'wallet_id': fromWallet['id'],
+                    'destination_wallet_id': toWallet['id'],
+                    'amount': amount,
+                    'date': DateTime.now().toIso8601String().split('T')[0],
+                    'note': 'โอนเงิน',
+                  });
                   if (mounted) {
                     Navigator.pop(context);
                     _loadData();
@@ -490,14 +490,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                                   return Container(
                                     key: ValueKey(wallet['id']),
-                                    child: DragTarget<dynamic>(
+                                    child: DragTarget<Map>(
                                       onAcceptWithDetails: (details) {
                                         if (details.data['id'] != wallet['id']) {
                                           _showTransferDialog(details.data, wallet);
                                         }
                                       },
                                       builder: (context, candidateData, rejectedData) {
-                                        return LongPressDraggable<dynamic>(
+                                        return LongPressDraggable<Map>(
                                           data: wallet,
                                           feedback: Material(
                                             color: Colors.transparent,
@@ -596,3 +596,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
