@@ -1,4 +1,4 @@
-﻿# มีตังค์ (MeeTang) - Frontend App 📱💰
+# มีตังค์ (MeeTang) - Frontend App 📱💰
 
 แอปพลิเคชัน "มีตังค์" (MeeTang) เป็นแอปจัดการการเงินส่วนบุคคล พัฒนาด้วย **Flutter** รองรับการใช้งานแบบ Cross-platform ทั้งบน Android และ iOS พร้อม UI ที่สวยงาม ทันสมัย และใช้งานง่าย
 
@@ -39,7 +39,7 @@
 3. **ตั้งค่า Backend API**
    เข้าไปที่ไฟล์ `lib/services/api_service.dart` และแก้ไข URL ให้ตรงกับ Server หรือโดเมนของคุณ
    ```dart
-   static const String serverIp = 'meetang.heyroll.site'; 
+   static const String serverIp = 'your-server-ip-or-domain.com'; // เปลี่ยนเป็น IP หรือ โดเมน ของเซิร์ฟเวอร์คุณ
    static const String baseUrl = 'https://$serverIp/api';
    ```
 
