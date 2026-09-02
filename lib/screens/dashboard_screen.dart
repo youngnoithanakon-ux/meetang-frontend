@@ -273,6 +273,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _showTransferDialog(dynamic fromWallet, dynamic toWallet) {
+    final amountController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('โอนเงินระหว่างกระเป๋า'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('จาก: ${fromWallet['name']} ➡️ ไปยัง: ${toWallet['name']}'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'จำนวนเงิน (บาท)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ยกเลิก'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final amount = double.tryParse(amountController.text) ?? 0;
+                if (amount <= 0) return;
+                try {
+                  await _apiService.addTransaction(
+                    type: 'transfer',
+                    walletId: fromWallet['id'],
+                    destinationWalletId: toWallet['id'],
+                    amount: amount,
+                    date: DateTime.now(),
+                    note: 'โอนเงิน',
+                  );
+                  if (mounted) {
+                    Navigator.pop(context);
+                    _loadData();
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('โอนเงินสำเร็จ!')));
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                }
+              },
+              child: const Text('ยืนยันโอนเงิน'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final formatCurrency = NumberFormat.currency(locale: 'th_TH', symbol: '฿');
@@ -363,13 +420,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      const Text('💡 ลากไอคอน ≡ สลับตำแหน่ง | กดค้างที่กระเป๋าแล้วลากไปทับอีกใบเพื่อโอนเงิน', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 8),
                       SizedBox(
                         height: 140,
                         child: _wallets.isEmpty
                             ? Center(child: Text('ยังไม่มีกระเป๋าเงิน', style: TextStyle(color: Colors.grey[500])))
                             : ReorderableListView.builder(
                                 scrollDirection: Axis.horizontal,
-                                buildDefaultDragHandles: false,
+                                buildDefaultDragHandles: false, // We will build our own handle
                                 onReorder: (oldIndex, newIndex) {
                                   setState(() {
                                     if (newIndex > oldIndex) newIndex -= 1;
@@ -385,49 +444,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   final bool isGoal = wallet['target_amount'] != null;
                                   final double progress = isGoal ? ((wallet['balance'] ?? 0) / wallet['target_amount']).clamp(0.0, 1.0) : 0.0;
 
-                                  return ReorderableDragStartListener(
-                                    key: ValueKey(wallet['id']),
-                                    index: index,
-                                    child: GestureDetector(
-                                      onTap: () => _showEditWalletDialog(wallet),
-                                      child: Container(
-                                        width: 160,
-                                        margin: const EdgeInsets.only(right: 16, bottom: 8),
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(context).cardTheme.color,
-                                          borderRadius: BorderRadius.circular(16),
-                                          boxShadow: [
-                                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2)),
-                                          ],
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                  Widget walletCard = Container(
+                                    width: 160,
+                                    margin: const EdgeInsets.only(right: 16, bottom: 8),
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).cardTheme.color,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2)),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
                                           children: [
-                                            Row(
-                                              children: [
-                                                Icon(isGoal ? Icons.flag : Icons.account_balance_wallet, color: Theme.of(context).colorScheme.primary, size: 20),
-                                                const SizedBox(width: 8),
-                                                Expanded(child: Text(wallet['name'], style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                              ],
+                                            Icon(isGoal ? Icons.flag : Icons.account_balance_wallet, color: Theme.of(context).colorScheme.primary, size: 20),
+                                            const SizedBox(width: 8),
+                                            Expanded(child: Text(wallet['name'], style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                            // Drag Handle for reordering
+                                            ReorderableDragStartListener(
+                                              index: index,
+                                              child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
                                             ),
-                                            const Spacer(),
-                                            Text(
-                                              formatCurrency.format(wallet['balance'] ?? 0),
-                                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
-                                            ),
-                                            if (isGoal) ...[
-                                              const SizedBox(height: 8),
-                                              LinearProgressIndicator(
-                                                value: progress,
-                                                backgroundColor: Colors.grey[300],
-                                                color: Theme.of(context).colorScheme.primary,
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                            ],
                                           ],
                                         ),
-                                      ),
+                                        const Spacer(),
+                                        Text(
+                                          formatCurrency.format(wallet['balance'] ?? 0),
+                                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+                                        ),
+                                        if (isGoal) ...[
+                                          const SizedBox(height: 8),
+                                          LinearProgressIndicator(
+                                            value: progress,
+                                            backgroundColor: Colors.grey[300],
+                                            color: Theme.of(context).colorScheme.primary,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+
+                                  return Container(
+                                    key: ValueKey(wallet['id']),
+                                    child: DragTarget<dynamic>(
+                                      onAcceptWithDetails: (details) {
+                                        if (details.data['id'] != wallet['id']) {
+                                          _showTransferDialog(details.data, wallet);
+                                        }
+                                      },
+                                      builder: (context, candidateData, rejectedData) {
+                                        return LongPressDraggable<dynamic>(
+                                          data: wallet,
+                                          feedback: Material(
+                                            color: Colors.transparent,
+                                            child: Opacity(opacity: 0.7, child: walletCard),
+                                          ),
+                                          childWhenDragging: Opacity(opacity: 0.3, child: walletCard),
+                                          child: GestureDetector(
+                                            onTap: () => _showEditWalletDialog(wallet),
+                                            child: Container(
+                                              decoration: candidateData.isNotEmpty
+                                                  ? BoxDecoration(
+                                                      border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2),
+                                                      borderRadius: BorderRadius.circular(16),
+                                                    )
+                                                  : null,
+                                              child: walletCard,
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   );
                                 },
