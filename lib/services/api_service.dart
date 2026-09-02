@@ -22,6 +22,25 @@ class ApiService {
     await prefs.remove('auth_token');
   }
 
+    Future<Map<String, dynamic>> getDashboardInfo({int? month, int? year}) async {
+    final token = await getToken();
+    
+    String url = '$baseUrl/dashboard';
+    if (month != null && year != null) {
+      url += '?month=$month&year=$year';
+    }
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: _headers(token),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to load dashboard data');
+  }
+
   // ---- Save Wallet Order Locally ----
   Future<List<int>> getWalletOrder() async {
     final prefs = await SharedPreferences.getInstance();
@@ -392,4 +411,5 @@ class ApiService {
     }
   }
 }
+
 
