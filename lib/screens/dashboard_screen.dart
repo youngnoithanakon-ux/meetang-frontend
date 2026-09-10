@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import 'add_transaction_screen.dart';
 
@@ -25,6 +27,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadData();
+    _checkForUpdate();
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final versionInfo = await _apiService.checkAppVersion();
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final latestVersion = versionInfo['version'] ?? currentVersion;
+      final downloadUrl = versionInfo['download_url'] ?? '';
+      final forceUpdate = versionInfo['force_update'] ?? false;
+      final releaseNotes = versionInfo['release_notes'] ?? '';
+
+      if (currentVersion != latestVersion && mounted) {
+        _showUpdateDialog(
+          currentVersion: currentVersion,
+          latestVersion: latestVersion,
+          downloadUrl: downloadUrl,
+          forceUpdate: forceUpdate,
+          releaseNotes: releaseNotes,
+        );
+      }
+    } catch (_) {
+      // ไม่ต้องแสดง Error ถ้าเช็คไม่ได้ (เช่น ไม่มีเน็ต)
+    }
+  }
+
+  void _showUpdateDialog({
+    required String currentVersion,
+    required String latestVersion,
+    required String downloadUrl,
+    required bool forceUpdate,
+    required String releaseNotes,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: !forceUpdate,
+      builder: (context) => PopScope(
+        canPop: !forceUpdate,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Text('🎉 ', style: TextStyle(fontSize: 24)),
+              Text('มีเวอร์ชันใหม่!'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text('เวอร์ชันปัจจุบัน: '),
+                  Text(currentVersion, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Text('เวอร์ชันล่าสุด: '),
+                  Text(latestVersion, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                ],
+              ),
+              if (releaseNotes.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('📝 มีอะไรใหม่:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(releaseNotes, style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+              ],
+            ],
+          ),
+          actions: [
+            if (!forceUpdate)
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('ไว้ทีหลัง'),
+              ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final uri = Uri.parse(downloadUrl);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+              icon: const Icon(Icons.download),
+              label: const Text('อัปเดตเลย! 🚀'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadData() async {

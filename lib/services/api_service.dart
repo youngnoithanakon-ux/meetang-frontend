@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,6 +6,18 @@ class ApiService {
   // IP เธเธญเธเน€เธเธฃเธทเนเธญเธเธเธญเธกเธเธดเธงเน€เธ•เธญเธฃเน เน€เธเธทเนเธญเนเธซเนเธกเธทเธญเธ–เธทเธญเน€เธเธทเนเธญเธกเธ•เนเธญเน€เธเนเธฒเธกเธฒเนเธ”เน
   static const String serverIp = 'meetang.heyroll.site';
   static const String baseUrl = 'https://$serverIp/api';
+
+  // ---- App Version Check (ไม่ต้อง Login) ----
+  Future<Map<String, dynamic>> checkAppVersion() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/app-version'),
+      headers: _headers(null),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('Failed to check app version');
+  }
 
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
