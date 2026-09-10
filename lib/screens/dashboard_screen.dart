@@ -18,6 +18,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<dynamic> _wallets = [];
   List<dynamic> _transactions = [];
   bool _isLoading = true;
+  String _appVersion = '';
 
   double _totalBalance = 0;
   double _monthlyIncome = 0;
@@ -28,6 +29,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _loadData();
     _checkForUpdate();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _appVersion = info.version);
   }
 
   Future<void> _checkForUpdate() async {
@@ -434,7 +441,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ภาพรวม'),
+          title: Row(
+            children: [
+              const Text('ภาพรวม'),
+              if (_appVersion.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'v$_appVersion',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         actions: [
           IconButton(
             icon: const Icon(Icons.person),
