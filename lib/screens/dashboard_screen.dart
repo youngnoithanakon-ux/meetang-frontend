@@ -379,56 +379,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _showTransferDialog(dynamic fromWallet, dynamic toWallet) {
     final amountController = TextEditingController();
+    bool isSaving = false;
+
     showDialog(
       context: context,
+      barrierDismissible: false, // ป้องกันกดปิดตอนกำลังโหลด
       builder: (context) {
-        return AlertDialog(
-          title: const Text('โอนเงินระหว่างกระเป๋า'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('จาก: ${fromWallet['name']} ➡️ ไปยัง: ${toWallet['name']}'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'จำนวนเงิน (บาท)',
-                  border: OutlineInputBorder(),
-                ),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('โอนเงินระหว่างกระเป๋า'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('จาก: ${fromWallet['name']} ➡️ ไปยัง: ${toWallet['name']}'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    enabled: !isSaving,
+                    decoration: const InputDecoration(
+                      labelText: 'จำนวนเงิน (บาท)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('ยกเลิก'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final amount = double.tryParse(amountController.text) ?? 0;
-                if (amount <= 0) return;
-                try {
-                  await _apiService.createTransaction({
-                    'type': 'transfer',
-                    'wallet_id': fromWallet['id'],
-                    'destination_wallet_id': toWallet['id'],
-                    'amount': amount,
-                    'date': DateTime.now().toIso8601String(),
-                    'note': 'โอนเงิน',
-                  });
-                  if (mounted) {
-                    Navigator.pop(context);
-                    _loadData();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('โอนเงินสำเร็จ!')));
-                  }
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-                }
-              },
-              child: const Text('ยืนยันโอนเงิน'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('ยกเลิก'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving ? null : () async {
+                    final amount = double.tryParse(amountController.text) ?? 0;
+                    if (amount <= 0) return;
+                    
+                    setDialogState(() => isSaving = true);
+                    
+                    try {
+                      await _apiService.createTransaction({
+                        'type': 'transfer',
+                        'wallet_id': fromWallet['id'],
+                        'destination_wallet_id': toWallet['id'],
+                        'amount': amount,
+                        'date': DateTime.now().toIso8601String(),
+                        'note': 'โอนเงิน',
+                      });
+                      if (mounted) {
+                        Navigator.pop(context);
+                        _loadData();
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('โอนเงินสำเร็จ!')));
+                      }
+                    } catch (e) {
+                      setDialogState(() => isSaving = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                    }
+                  },
+                  child: isSaving 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('ยืนยันโอนเงิน'),
+                ),
+              ],
+            );
+          }
         );
       },
     );
